@@ -1,6 +1,8 @@
 fastapi
 uvicorn
 python-multipart
-pypdf2
+pikepdf
+PyPDF2
 docx2pdf
 Pillow
+PyMuPDF  # (fitz)
