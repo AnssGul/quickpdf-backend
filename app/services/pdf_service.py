@@ -1,50 +1,112 @@
 import os
 import uuid
-import pikepdf
-from fastapi import UploadFile
-from PIL import Image
-import io
+import fitz  # PyMuPDF
+from fastapi import UploadFile, HTTPException
 
-UPLOAD_DIR = "tmp"
+UPLOAD_DIR = "temp"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 async def compress_pdf(file: UploadFile):
+    try:
+        unique_id = str(uuid.uuid4())
+        input_path = os.path.join(UPLOAD_DIR, f"{unique_id}_input.pdf")
+        output_path = os.path.join(UPLOAD_DIR, f"{unique_id}_compressed.pdf")
 
-    input_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}.pdf")
-    output_path = os.path.join(UPLOAD_DIR, f"compressed_{uuid.uuid4()}.pdf")
+        # Save file
+        with open(input_path, "wb") as f:
+            f.write(await file.read())
 
-    # Save uploaded file
-    with open(input_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        doc = fitz.open(input_path)
 
-    with pikepdf.open(input_path) as pdf:
+        # Save with garbage collection + compression
+        doc.save(
+            output_path,
+            garbage=4,
+            deflate=True,
+            clean=True
+        )
 
-        for page in pdf.pages:
-            for image_name, raw_image in page.images.items():
+        doc.close()
+        os.remove(input_path)
 
-                try:
-                    image_obj = raw_image.get_object()
-                    image_data = image_obj.read_bytes()
+        return output_path
 
-                    img = Image.open(io.BytesIO(image_data))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Compression failed: {str(e)}"
+        )    
 
-                    # Convert to JPEG (strong compression)
-                    img = img.convert("RGB")
 
-                    compressed_io = io.BytesIO()
-                    img.save(
-                        compressed_io,
-                        format="JPEG",
-                        quality=40,  # 🔥 Change this (20–60)
-                        optimize=True
-                    )
 
-                    image_obj.write(compressed_io.getvalue())
 
-                except Exception:
-                    continue
 
-        pdf.save(output_path)
+# import os
+# import uuid
+# import subprocess
+# from fastapi import UploadFile, HTTPException
 
-    return output_path
+# UPLOAD_DIR = "temp"
+
+# # ensure temp folder exists
+# os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+# async def compress_pdf(file: UploadFile, level: str = "ebook") -> str:
+#     """
+#     Compress PDF using Ghostscript
+
+#     level options:
+#         screen  -> lowest quality, highest compression
+#         ebook   -> medium quality (recommended)
+#         printer -> high quality
+#         prepress-> very high quality
+#     """
+
+#     # validate compression level
+#     allowed_levels = ["screen", "ebook", "printer", "prepress"]
+#     if level not in allowed_levels:
+#         level = "ebook"
+
+#     try:
+#         # generate unique filenames
+#         unique_id = str(uuid.uuid4())
+#         input_path = os.path.join(UPLOAD_DIR, f"{unique_id}_input.pdf")
+#         output_path = os.path.join(UPLOAD_DIR, f"{unique_id}_compressed.pdf")
+
+#         # save uploaded file
+#         with open(input_path, "wb") as f:
+#             f.write(await file.read())
+
+#         # ghostscript command
+#         command = [
+#     "gswin64c",  # Windows fix
+#     "-sDEVICE=pdfwrite",
+#     "-dCompatibilityLevel=1.4",
+#     f"-dPDFSETTINGS=/{level}",
+#     "-dNOPAUSE",
+#     "-dQUIET",
+#     "-dBATCH",
+#     f"-sOutputFile={output_path}",
+#     input_path,
+# ]
+
+#         result = subprocess.run(command, capture_output=True)
+
+#         if result.returncode != 0:
+#             raise HTTPException(
+#                 status_code=500,
+#                 detail="Error compressing PDF"
+#             )
+
+#         # optional: remove original file
+#         if os.path.exists(input_path):
+#             os.remove(input_path)
+
+#         return output_path
+
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Compression failed: {str(e)}"
+#         )

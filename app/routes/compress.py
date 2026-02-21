@@ -5,12 +5,17 @@ import os
 
 router = APIRouter(prefix="/compress", tags=["Compress PDF"])
 
+from fastapi import BackgroundTasks
+
 @router.post("/")
-async def compress(file: UploadFile = File(...)):
+async def compress(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
+    
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
 
     output_path = await compress_pdf(file)
+
+    background_tasks.add_task(os.remove, output_path)
 
     return FileResponse(
         path=output_path,
